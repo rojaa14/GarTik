@@ -1,0 +1,6 @@
+{
+  "name": "GarTik",
+  "description": "A lightweight native Android TikTok companion application with download selection features, built-in Javascript Scraper configuration, and modern M3 UI design.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
