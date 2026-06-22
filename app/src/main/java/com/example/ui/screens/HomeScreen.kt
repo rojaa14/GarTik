@@ -232,7 +232,7 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Paste TikTok Link",
+                            text = "Paste Media Link",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             color = Color(0xFF334155)
@@ -248,7 +248,7 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                                 onValueChange = { viewModel.inputUrl.value = it },
                                 placeholder = {
                                     Text(
-                                        "https://www.tiktok.com/@creator/video/...",
+                                        "TikTok, X, Facebook, Instagram, or direct URL...",
                                         fontSize = 13.sp,
                                         color = Color(0xFF94A3B8)
                                     )
@@ -492,7 +492,7 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Terminal ready. Enter TikTok/X URL and press Download to monitor Scraper execution code live.",
+                                    text = "Terminal ready. Enter a URL (TikTok, X, Facebook, Instagram, or direct CDN URL) and press Download to monitor Scraper execution code live.",
                                     color = Color(0xFF64748B),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
