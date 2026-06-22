@@ -79,6 +79,7 @@ import com.example.ui.theme.GarTikSecondary
 import com.example.ui.theme.GarTikTertiary
 import com.example.ui.viewmodel.DownloaderState
 import com.example.ui.viewmodel.GarTikViewModel
+import coil.compose.AsyncImage
 
 // Additional system packages for video player, progress bar, & dialogue overlays
 import androidx.compose.ui.viewinterop.AndroidView
@@ -434,7 +435,49 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                     border = BorderStroke(1.dp, Color(0xFF1E293B))
                 ) {
                     Box(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-                        if (viewModel.consoleLogs.isEmpty() && systemState is DownloaderState.Idle) {
+                        val activeImg = viewModel.activeSlideshowImage.value
+                        if (activeImg != null) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "LIVE SCRAPER IMAGE STREAMING",
+                                    color = Color(0xFF38BDF8),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth(0.9f),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        AsyncImage(
+                                            model = activeImg,
+                                            contentDescription = "Slideshow Download Node",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Processing frames natively...",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                        } else if (viewModel.consoleLogs.isEmpty() && systemState is DownloaderState.Idle) {
                             // Terminal welcome message
                             Column(
                                 modifier = Modifier.fillMaxSize(),
@@ -449,7 +492,7 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Terminal ready. Enter TikTok URL and press Download to monitor Scraper execution code live.",
+                                    text = "Terminal ready. Enter TikTok/X URL and press Download to monitor Scraper execution code live.",
                                     color = Color(0xFF64748B),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
@@ -1017,27 +1060,40 @@ fun VideoPreviewPlayer(
                         .background(Color.DarkGray),
                     contentAlignment = Alignment.Center
                 ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            VideoView(ctx).apply {
-                                val mediaController = MediaController(ctx)
-                                mediaController.setAnchorView(this)
-                                setMediaController(mediaController)
-                                setVideoURI(Uri.parse(videoUrl))
-                                setOnPreparedListener { mediaPlayer ->
-                                    mediaPlayer.isLooping = true
-                                    start()
+                    val isPreviewImg = videoUrl.contains(".jpg") || videoUrl.contains(".png") || videoUrl.contains(".webp") || videoUrl.contains("pbs.twimg.com") || videoUrl.contains("photo")
+                    if (isPreviewImg) {
+                        AsyncImage(
+                            model = videoUrl,
+                            contentDescription = "Preview Image",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                    } else {
+                        AndroidView(
+                            factory = { ctx ->
+                                VideoView(ctx).apply {
+                                    val mediaController = MediaController(ctx)
+                                    mediaController.setAnchorView(this)
+                                    setMediaController(mediaController)
+                                    setVideoURI(Uri.parse(videoUrl))
+                                    setOnPreparedListener { mediaPlayer ->
+                                        mediaPlayer.isLooping = true
+                                        start()
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 Text(
-                    text = "Streaming real-time video payload from live content delivery nodes.",
+                    text = if (videoUrl.contains(".jpg") || videoUrl.contains(".png") || videoUrl.contains(".webp") || videoUrl.contains("pbs.twimg.com") || videoUrl.contains("photo")) 
+                        "Previewing slideshow or single cover frame image." 
+                    else 
+                        "Streaming real-time video payload from live content delivery nodes.",
                     color = Color(0xFF64748B),
                     fontSize = 10.sp,
                     textAlign = TextAlign.Center,

@@ -48,7 +48,9 @@ data class TikTokMetadata(
     val username: String,
     val audioUrl: String,
     val musicTitle: String,
-    val isReal: Boolean = true
+    val isReal: Boolean = true,
+    val imagesList: List<String> = emptyList(),
+    val isSlideshow: Boolean = false
 )
 
 class GarTikViewModel(val context: Context) : ViewModel() {
@@ -78,6 +80,7 @@ class GarTikViewModel(val context: Context) : ViewModel() {
     val downloadProgress = mutableStateOf(0)
     val showProgressOverlay = mutableStateOf(false)
     val progressMessage = mutableStateOf("Processing...")
+    val activeSlideshowImage = mutableStateOf<String?>(null)
 
     // Preview player state
     val isInteractivePreviewOpen = mutableStateOf(false)
@@ -222,6 +225,18 @@ class GarTikViewModel(val context: Context) : ViewModel() {
                             val musicTitle = musicObj?.optString("title", "Original Sound") ?: "Original Sound"
                             val audioUrl = dataObj.optString("music", "")
                             
+                            val imagesArr = dataObj.optJSONArray("images")
+                            val imagesList = mutableListOf<String>()
+                            if (imagesArr != null) {
+                                for (i in 0 until imagesArr.length()) {
+                                    val imgUrl = imagesArr.optString(i, "")
+                                    if (imgUrl.isNotEmpty()) {
+                                        imagesList.add(imgUrl)
+                                    }
+                                }
+                            }
+                            val isSlideshow = imagesList.isNotEmpty()
+                            
                             return@withContext TikTokMetadata(
                                 videoUrl = playUrl,
                                 previewUrl = wmPlay.ifEmpty { playUrl },
@@ -229,9 +244,90 @@ class GarTikViewModel(val context: Context) : ViewModel() {
                                 username = "@$nickname",
                                 audioUrl = audioUrl,
                                 musicTitle = musicTitle,
-                                isReal = true
+                                isReal = true,
+                                imagesList = imagesList,
+                                isSlideshow = isSlideshow
                             )
                         }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            null
+        }
+    }
+
+    suspend fun fetchXMetadata(inputUrl: String): TikTokMetadata? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Regex to find status id from X or Twitter URL
+                val pattern = Regex("""status/(\d+)""")
+                val match = pattern.find(inputUrl)
+                val tweetId = match?.groupValues?.get(1) ?: return@withContext null
+                
+                val url = URL("https://api.fxtwitter.com/status/$tweetId")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 12000
+                connection.readTimeout = 12000
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                
+                if (connection.responseCode == 200) {
+                    val reader = BufferedReader(InputStreamReader(connection.inputStream))
+                    val response = StringBuilder()
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        response.append(line)
+                    }
+                    reader.close()
+                    
+                    val json = JSONObject(response.toString())
+                    val tweetObj = json.optJSONObject("tweet")
+                    if (tweetObj != null) {
+                        val caption = tweetObj.optString("text", "X Post")
+                        val authorObj = tweetObj.optJSONObject("author")
+                        val nickname = authorObj?.optString("screen_name", "x_user") ?: "x_user"
+                        
+                        // Media
+                        val mediaObj = tweetObj.optJSONObject("media")
+                        val imagesList = mutableListOf<String>()
+                        var videoUrl = ""
+                        var isSlideshow = false
+                        
+                        if (mediaObj != null) {
+                            val allArr = mediaObj.optJSONArray("all")
+                            if (allArr != null) {
+                                for (i in 0 until allArr.length()) {
+                                    val mItem = allArr.optJSONObject(i)
+                                    if (mItem != null) {
+                                        val type = mItem.optString("type", "")
+                                        val mUrl = mItem.optString("url", "")
+                                        if (type == "video" || type == "gif") {
+                                            videoUrl = mUrl
+                                        } else if (type == "photo" || type == "image") {
+                                            imagesList.add(mUrl)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (videoUrl.isEmpty() && imagesList.isNotEmpty()) {
+                            isSlideshow = true
+                        }
+                        
+                        return@withContext TikTokMetadata(
+                            videoUrl = videoUrl,
+                            previewUrl = videoUrl,
+                            caption = caption,
+                            username = "@$nickname",
+                            audioUrl = "",
+                            musicTitle = "Original X Audio",
+                            isReal = true,
+                            imagesList = imagesList,
+                            isSlideshow = isSlideshow
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -245,6 +341,7 @@ class GarTikViewModel(val context: Context) : ViewModel() {
         videoUrl: String, 
         fileName: String, 
         isAudio: Boolean,
+        isImage: Boolean = false,
         progressCallback: (Int) -> Unit
     ): Pair<Long, String> = withContext(Dispatchers.IO) {
         var bytesWritten = 0L
@@ -254,25 +351,44 @@ class GarTikViewModel(val context: Context) : ViewModel() {
             val resolver = context.contentResolver
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, if (isAudio) "audio/mp3" else "video/mp4")
+                val mimeType = when {
+                    isImage -> "image/jpeg"
+                    isAudio -> "audio/mp3"
+                    else -> "video/mp4"
+                }
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val relativeSubfolder = if (isAudio) "Music/GarTik" else "Movies/GarTik"
+                    val relativeSubfolder = when {
+                        isImage -> "Pictures/GarTik"
+                        isAudio -> "Music/GarTik"
+                        else -> "Movies/GarTik"
+                    }
                     put(MediaStore.MediaColumns.RELATIVE_PATH, relativeSubfolder)
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
             }
             
-            val collectionUri = if (isAudio) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                } else {
-                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            val collectionUri = when {
+                isImage -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    } else {
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    }
                 }
-            } else {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                } else {
-                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                isAudio -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    } else {
+                        MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                    }
+                }
+                else -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                    } else {
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    }
                 }
             }
             
@@ -365,12 +481,15 @@ class GarTikViewModel(val context: Context) : ViewModel() {
     fun startDownloadPipeline(url: String) {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) {
-            _downloaderState.value = DownloaderState.Error("Please paste a valid TikTok link")
+            _downloaderState.value = DownloaderState.Error("Please paste a valid link")
             return
         }
 
-        if (!trimmed.contains("tiktok.com")) {
-            _downloaderState.value = DownloaderState.Error("Invalid TikTok link format. Please include 'tiktok.com'")
+        val isTikTok = trimmed.contains("tiktok.com")
+        val isX = trimmed.contains("twitter.com") || trimmed.contains("x.com")
+
+        if (!isTikTok && !isX) {
+            _downloaderState.value = DownloaderState.Error("Invalid link format. Please enter a valid TikTok or X/Twitter URL")
             return
         }
 
@@ -380,11 +499,16 @@ class GarTikViewModel(val context: Context) : ViewModel() {
             downloadProgress.value = 0
             progressMessage.value = "Initialising Scraper..."
             showProgressOverlay.value = true
+            activeSlideshowImage.value = null
 
             // 1. Start Scraping Logs
             consoleLogs.add("[+] Processing URL: $trimmed")
             delay(300)
-            consoleLogs.add("[+] TikTok Scraper initialised successfully")
+            if (isX) {
+                consoleLogs.add("[+] X/Twitter Media Scraper initialised successfully")
+            } else {
+                consoleLogs.add("[+] TikTok Scraper initialised successfully")
+            }
             delay(200)
             consoleLogs.add("[+] Reading environment scripts...")
             delay(200)
@@ -398,12 +522,21 @@ class GarTikViewModel(val context: Context) : ViewModel() {
                 consoleLogs.add("[+] Routing requests via encrypted proxy channel")
                 delay(300)
             }
-            consoleLogs.add("[+] Querying live Internet TikTok media resolver API...")
+            
+            if (isX) {
+                consoleLogs.add("[+] Querying live Internet X/Twitter media resolver (FixTweet API)...")
+            } else {
+                consoleLogs.add("[+] Querying live Internet TikTok media resolver API...")
+            }
             progressMessage.value = "Resolving stream link..."
             
             var realMeta: TikTokMetadata? = null
             try {
-                realMeta = fetchTikTokMetadata(trimmed)
+                if (isX) {
+                    realMeta = fetchXMetadata(trimmed)
+                } else {
+                    realMeta = fetchTikTokMetadata(trimmed)
+                }
             } catch (e: Exception) {
                 consoleLogs.add("[!] Error querying API directly: ${e.localizedMessage}")
             }
@@ -411,7 +544,7 @@ class GarTikViewModel(val context: Context) : ViewModel() {
             val finalItem: DownloadItem
             val downloadUrl: String
             
-            if (realMeta != null && realMeta.videoUrl.isNotEmpty()) {
+            if (realMeta != null && (realMeta.videoUrl.isNotEmpty() || realMeta.imagesList.isNotEmpty())) {
                 consoleLogs.add("[+] Live stream metadata recovered successfully!")
                 consoleLogs.add("[+] User niche: ${realMeta.username}")
                 consoleLogs.add("[+] Post description: \"${realMeta.caption.take(35)}...\"")
@@ -448,9 +581,62 @@ class GarTikViewModel(val context: Context) : ViewModel() {
 
             // 2. Perform direct downloading
             try {
-                if (downloadUrl.isNotEmpty()) {
+                if (realMeta != null && realMeta.imagesList.isNotEmpty()) {
+                    // Image Slideshow / Single download path!
+                    consoleLogs.add("[+] Slideshow/multiple images detected! Total images: ${realMeta.imagesList.size}")
+                    progressMessage.value = "Downloading image slideshow..."
+                    
+                    val totalImages = realMeta.imagesList.size
+                    val userHandle = realMeta.username.replace("@", "")
+                    var totalSavedBytes = 0L
+                    
+                    for (i in 0 until totalImages) {
+                        val imageUrl = realMeta.imagesList[i]
+                        consoleLogs.add("[+] Downloading image ${i + 1} of $totalImages...")
+                        
+                        // Set active image so the Log Panel shows it
+                        activeSlideshowImage.value = imageUrl
+                        
+                        val imgFileName = "${userHandle}_image_${System.currentTimeMillis()}_${i + 1}.jpg"
+                        
+                        val result = downloadAndSaveRealMedia(imageUrl, imgFileName, isAudio = false, isImage = true) { prog ->
+                            val combinedProg = ((i * 100 + prog) / totalImages)
+                            downloadProgress.value = combinedProg
+                            progressMessage.value = "Saving image ${i+1}/$totalImages to Gallery... $prog%"
+                        }
+                        
+                        totalSavedBytes += result.first
+                        consoleLogs.add("[+] Saved: $imgFileName")
+                        delay(250) // Small delay to let user preview image transition nicely!
+                    }
+                    
+                    val slideshowItem = finalItem.copy(
+                        resolution = "Slideshow Image Pack (${totalImages} photos)",
+                        sizeBytes = totalSavedBytes,
+                        outputFileName = "${userHandle}_slideshow_${System.currentTimeMillis()}.jpg"
+                    )
+                    
+                    consoleLogs.add("[+] File slideshow write completed! Total size: %.2f MB".format(totalSavedBytes.toDouble() / (1024 * 1024)))
+                    consoleLogs.add("[+] Slideshow successfully integrated directly to Device Storage Gallery Pictures folder")
+                    consoleLogs.add("[+] Output indexed: ${slideshowItem.outputFileName}")
+                    consoleLogs.add("[+] PIPELINE COMPLETE! 200 SUCCESS.")
+                    
+                    // Save history
+                    storage.addDownloadItem(slideshowItem)
+                    loadHistory()
+                    
+                    showNotification(
+                        "Download Completed! 🎉", 
+                        "Saved successfully to gallery: $totalImages images saved."
+                    )
+                    
+                    _downloaderState.value = DownloaderState.Success(slideshowItem)
+                    
+                    delay(2500)
+                    activeSlideshowImage.value = null // Reverts smoothly to the previous console log text terminal!
+                } else if (downloadUrl.isNotEmpty()) {
                     consoleLogs.add("[+] Injecting CDN download pipe matching quality: ${selectedQuality.value}")
-                    progressMessage.value = "Downloading from TikTok CDN..."
+                    progressMessage.value = "Downloading from CDN..."
                     
                     val isAudio = (selectedQuality.value == "Audio Only")
                     val result = downloadAndSaveRealMedia(downloadUrl, finalItem.outputFileName, isAudio) { prog ->
@@ -542,12 +728,15 @@ class GarTikViewModel(val context: Context) : ViewModel() {
     fun startPreview(url: String) {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) {
-            _downloaderState.value = DownloaderState.Error("Please paste a valid TikTok link to preview")
+            _downloaderState.value = DownloaderState.Error("Please paste a valid link to preview")
             return
         }
 
-        if (!trimmed.contains("tiktok.com")) {
-            _downloaderState.value = DownloaderState.Error("Invalid TikTok link format for preview")
+        val isTikTok = trimmed.contains("tiktok.com")
+        val isX = trimmed.contains("twitter.com") || trimmed.contains("x.com")
+
+        if (!isTikTok && !isX) {
+            _downloaderState.value = DownloaderState.Error("Invalid link format. Please enter a valid TikTok or X/Twitter URL")
             return
         }
 
@@ -561,7 +750,11 @@ class GarTikViewModel(val context: Context) : ViewModel() {
             
             var meta: TikTokMetadata? = null
             try {
-                meta = fetchTikTokMetadata(trimmed)
+                if (isX) {
+                    meta = fetchXMetadata(trimmed)
+                } else {
+                    meta = fetchTikTokMetadata(trimmed)
+                }
             } catch (e: Exception) {
                 consoleLogs.add("[!] Preview query exception: ${e.localizedMessage}")
             }
@@ -569,14 +762,20 @@ class GarTikViewModel(val context: Context) : ViewModel() {
             downloadProgress.value = 70
             delay(300)
             
-            if (meta != null && meta.previewUrl.isNotEmpty()) {
+            if (meta != null && (meta.previewUrl.isNotEmpty() || meta.isSlideshow)) {
                 downloadProgress.value = 100
                 delay(200)
                 showProgressOverlay.value = false
                 
-                currentPreviewUrl.value = meta.previewUrl
-                currentPreviewTitle.value = meta.caption
-                currentPreviewUser.value = meta.username
+                if (meta.isSlideshow && meta.imagesList.isNotEmpty()) {
+                    currentPreviewUrl.value = meta.imagesList.first()
+                    currentPreviewTitle.value = meta.caption
+                    currentPreviewUser.value = meta.username
+                } else {
+                    currentPreviewUrl.value = meta.previewUrl
+                    currentPreviewTitle.value = meta.caption
+                    currentPreviewUser.value = meta.username
+                }
                 isInteractivePreviewOpen.value = true
                 
                 _downloaderState.value = DownloaderState.Idle
