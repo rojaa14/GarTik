@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.DownloadItem
 import com.example.data.GarTikStorage
+import com.example.data.ThemeMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,6 +62,12 @@ class GarTikViewModel(val context: Context) : ViewModel() {
     val selectedQuality = mutableStateOf(storage.getSelectedQuality())
     val isWatermarkDisabled = mutableStateOf(storage.isWatermarkDisabled())
     val isProxyEnabled = mutableStateOf(storage.isProxyEnabled())
+    val themeMode = mutableStateOf(storage.getThemeMode())
+
+    fun changeThemeMode(mode: ThemeMode) {
+        themeMode.value = mode
+        storage.setThemeMode(mode)
+    }
 
     // Scraper Script
     val scraperScriptCode = mutableStateOf(storage.getScraperScript())

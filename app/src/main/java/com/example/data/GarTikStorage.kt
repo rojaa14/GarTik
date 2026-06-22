@@ -53,6 +53,15 @@ data class DownloadItem(
     }
 }
 
+enum class ThemeMode {
+    LIGHT,
+    DARK,
+    MATERIAL_YOU,
+    FROSTED_GLASS,
+    GRADIENT_GLASS,
+    LIQUID_GLASS
+}
+
 class GarTikStorage(private val context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("gartik_prefs", Context.MODE_PRIVATE)
 
@@ -62,6 +71,20 @@ class GarTikStorage(private val context: Context) {
         private const val KEY_PROXY_ENABLED = "proxy_enabled"
         private const val KEY_WATERMARK_DISABLED = "watermark_disabled"
         private const val KEY_SELECTED_QUALITY = "selected_quality"
+        private const val KEY_THEME_MODE = "theme_mode"
+    }
+
+    fun getThemeMode(): ThemeMode {
+        val name = prefs.getString(KEY_THEME_MODE, ThemeMode.LIGHT.name) ?: ThemeMode.LIGHT.name
+        return try {
+            ThemeMode.valueOf(name)
+        } catch (e: Exception) {
+            ThemeMode.LIGHT
+        }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
     }
 
     fun getScraperScript(): String {

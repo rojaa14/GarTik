@@ -77,6 +77,9 @@ import com.example.data.DownloadItem
 import com.example.ui.theme.GarTikPrimary
 import com.example.ui.theme.GarTikSecondary
 import com.example.ui.theme.GarTikTertiary
+import com.example.ui.theme.LocalThemeMode
+import com.example.data.ThemeMode
+import androidx.compose.ui.graphics.Brush
 import com.example.ui.viewmodel.DownloaderState
 import com.example.ui.viewmodel.GarTikViewModel
 import coil.compose.AsyncImage
@@ -98,20 +101,59 @@ fun HomeScreen(viewModel: GarTikViewModel) {
     val systemState by viewModel.downloaderState.collectAsState()
     val downloads by viewModel.downloadsList.collectAsState()
 
+    val themeMode = LocalThemeMode.current
     var activeTab by remember { mutableStateOf("DOWNLOAD") } // "DOWNLOAD" or "HISTORY"
+
+    // Skin adaptations
+    val bgModifier = when(themeMode) {
+        ThemeMode.LIGHT -> Modifier.background(Color(0xFFF8FAFC))
+        ThemeMode.DARK -> Modifier.background(Color(0xFF0F172A))
+        ThemeMode.MATERIAL_YOU -> Modifier.background(MaterialTheme.colorScheme.background)
+        else -> Modifier // Float on background decoration Canvas
+    }
+
+    val headerBg = when(themeMode) {
+        ThemeMode.LIGHT -> Color.White
+        ThemeMode.DARK -> Color(0xFF1E293B)
+        ThemeMode.MATERIAL_YOU -> MaterialTheme.colorScheme.surface
+        else -> Color(0xC21E293B)
+    }
+
+    val headerBorder = if (themeMode != ThemeMode.LIGHT && themeMode != ThemeMode.DARK && themeMode != ThemeMode.MATERIAL_YOU) {
+        Modifier.border(0.5.dp, Color(0x2BFFFFFF))
+    } else Modifier
+
+    val labelColor = when(themeMode) {
+        ThemeMode.LIGHT -> Color(0xFF0F172A)
+        ThemeMode.DARK -> Color.White
+        ThemeMode.MATERIAL_YOU -> MaterialTheme.colorScheme.onBackground
+        else -> Color.White
+    }
+
+    val descColor = when(themeMode) {
+        ThemeMode.LIGHT -> Color(0xFF475569)
+        ThemeMode.DARK -> Color(0xFF94A3B8)
+        ThemeMode.MATERIAL_YOU -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> Color(0xFFCBD5E1)
+    }
+
+    val tabsBgColor = when(themeMode) {
+        ThemeMode.LIGHT, ThemeMode.MATERIAL_YOU -> Color(0xFFF1F5F9)
+        else -> Color(0x3D111827)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFC)) // Light gray slate
+            .then(bgModifier)
     ) {
         // App bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-                .border(width = 0.dp, color = Color.Transparent),
+                .background(headerBg)
+                .then(headerBorder)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -143,12 +185,12 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                         text = "GarTik",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
-                        color = Color(0xFF0F172A)
+                        color = labelColor
                     )
                     Text(
                         text = "JS Scraper Extension",
                         fontSize = 11.sp,
-                        color = GarTikSecondary,
+                        color = if (themeMode == ThemeMode.LIGHT) GarTikSecondary else if (themeMode == ThemeMode.MATERIAL_YOU) MaterialTheme.colorScheme.secondary else Color(0xFF38BDF8),
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -158,13 +200,17 @@ fun HomeScreen(viewModel: GarTikViewModel) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFFF1F5F9))
+                    .background(tabsBgColor)
                     .padding(3.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(if (activeTab == "DOWNLOAD") GarTikTertiary else Color.Transparent)
+                        .background(
+                            if (activeTab == "DOWNLOAD") {
+                                if (themeMode == ThemeMode.LIGHT) GarTikTertiary else if (themeMode == ThemeMode.MATERIAL_YOU) MaterialTheme.colorScheme.primary else Color(0xFF38BDF8)
+                            } else Color.Transparent
+                        )
                         .clickable { activeTab = "DOWNLOAD" }
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
@@ -172,13 +218,17 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                         "Download",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (activeTab == "DOWNLOAD") Color.White else Color(0xFF64748B)
+                        color = if (activeTab == "DOWNLOAD") Color.White else descColor
                     )
                 }
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(if (activeTab == "HISTORY") GarTikTertiary else Color.Transparent)
+                        .background(
+                            if (activeTab == "HISTORY") {
+                                if (themeMode == ThemeMode.LIGHT) GarTikTertiary else if (themeMode == ThemeMode.MATERIAL_YOU) MaterialTheme.colorScheme.primary else Color(0xFF38BDF8)
+                            } else Color.Transparent
+                        )
                         .clickable { activeTab = "HISTORY" }
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
@@ -187,7 +237,7 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                             "History",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (activeTab == "HISTORY") Color.White else Color(0xFF64748B)
+                            color = if (activeTab == "HISTORY") Color.White else descColor
                         )
                         if (downloads.isNotEmpty()) {
                             Spacer(modifier = Modifier.width(4.dp))
@@ -198,7 +248,7 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                                     .background(GarTikPrimary),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
+                                  Text(
                                     downloads.size.toString(),
                                     fontSize = 9.sp,
                                     color = Color.White,
@@ -211,7 +261,11 @@ fun HomeScreen(viewModel: GarTikViewModel) {
             }
         }
 
-        Divider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+        val dividerColor = when(themeMode) {
+            ThemeMode.LIGHT, ThemeMode.MATERIAL_YOU -> Color(0xFFE2E8F0)
+            else -> Color(0x1AFFFFFF)
+        }
+        Divider(color = dividerColor, thickness = 1.dp)
 
         AnimatedVisibility(
             visible = (activeTab == "DOWNLOAD"),
