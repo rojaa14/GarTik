@@ -80,6 +80,16 @@ import com.example.ui.theme.GarTikTertiary
 import com.example.ui.viewmodel.DownloaderState
 import com.example.ui.viewmodel.GarTikViewModel
 
+// Additional system packages for video player, progress bar, & dialogue overlays
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.VideoView
+import android.widget.MediaController
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.fillMaxHeight
+
 @Composable
 fun HomeScreen(viewModel: GarTikViewModel) {
     val context = LocalContext.current
@@ -336,33 +346,70 @@ fun HomeScreen(viewModel: GarTikViewModel) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Launch Process Scrape Button
-                Button(
-                    onClick = {
-                        viewModel.startDownloadPipeline(viewModel.inputUrl.value)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GarTikPrimary,
-                        contentColor = Color.White
-                    ),
-                    enabled = (systemState !is DownloaderState.Processing)
+                // Dual Action Panel with In-App Preview & HD Downloader
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Download,
-                            contentDescription = "start scraper download button"
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (systemState is DownloaderState.Processing) "Processing Scraper Script..." else "Download with HD Scraper Pipe",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            letterSpacing = 0.5.sp
-                        )
+                    // PREVIEW BUTTON
+                    Button(
+                        onClick = {
+                            viewModel.startPreview(viewModel.inputUrl.value)
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, GarTikPrimary),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = GarTikPrimary
+                        ),
+                        enabled = (systemState !is DownloaderState.Processing)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "preview in-app play button",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Preview Video",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+
+                    // DOWNLOAD BUTTON
+                    Button(
+                        onClick = {
+                            viewModel.startDownloadPipeline(viewModel.inputUrl.value)
+                        },
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .height(54.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GarTikPrimary,
+                            contentColor = Color.White
+                        ),
+                        enabled = (systemState !is DownloaderState.Processing)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = "start scraper download button",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Download HD",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
 
@@ -623,6 +670,28 @@ fun HomeScreen(viewModel: GarTikViewModel) {
                 }
             }
         }
+
+        // Downloader Progress Overlay
+        if (viewModel.showProgressOverlay.value) {
+            DownloadProgressDialog(
+                progress = viewModel.downloadProgress.value,
+                message = viewModel.progressMessage.value,
+                onCancel = { viewModel.showProgressOverlay.value = false }
+            )
+        }
+
+        // Live In-App Video Preview Screen Player dialog
+        if (viewModel.isInteractivePreviewOpen.value) {
+            val previewUrl = viewModel.currentPreviewUrl.value
+            if (previewUrl != null) {
+                VideoPreviewPlayer(
+                    videoUrl = previewUrl,
+                    title = viewModel.currentPreviewTitle.value,
+                    user = viewModel.currentPreviewUser.value,
+                    onClose = { viewModel.closePreview() }
+                )
+            }
+        }
     }
 }
 
@@ -773,3 +842,208 @@ fun HistoryItemCard(
 // Border helper
 @Composable
 fun BorderStroke(width: androidx.compose.ui.unit.Dp, color: Color) = androidx.compose.foundation.BorderStroke(width, color)
+
+@Composable
+fun DownloadProgressDialog(
+    progress: Int,
+    message: String,
+    onCancel: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {}, 
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(RoundedCornerShape(24.dp)),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFFF1F2)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Downloading active pipeline icon",
+                        tint = GarTikPrimary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                Text(
+                    text = "Active Download Pipe",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp,
+                    color = Color(0xFF0F172A)
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Text(
+                    text = message,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = Color(0xFF64748B),
+                    textAlign = TextAlign.Center
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                val animatedProgress by animateFloatAsState(
+                    targetValue = progress / 100f,
+                    animationSpec = tween(300)
+                )
+                
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(Color(0xFFF1F5F9))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(animatedProgress)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                        colors = listOf(GarTikPrimary, GarTikTertiary)
+                                    )
+                                )
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Source Gallery Pipe",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF94A3B8)
+                        )
+                        Text(
+                            text = "$progress%",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            color = GarTikPrimary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun VideoPreviewPlayer(
+    videoUrl: String,
+    title: String,
+    user: String,
+    onClose: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .height(480.dp)
+                .clip(RoundedCornerShape(24.dp)),
+            colors = CardDefaults.cardColors(containerColor = Color.Black),
+            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = user,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = title,
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.background(Color(0xFF1E293B), CircleShape).size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "Close preview",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(14.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.DarkGray),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                val mediaController = MediaController(ctx)
+                                mediaController.setAnchorView(this)
+                                setMediaController(mediaController)
+                                setVideoURI(Uri.parse(videoUrl))
+                                setOnPreparedListener { mediaPlayer ->
+                                    mediaPlayer.isLooping = true
+                                    start()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = "Streaming real-time video payload from live content delivery nodes.",
+                    color = Color(0xFF64748B),
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
